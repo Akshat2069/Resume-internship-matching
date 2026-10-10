@@ -40,17 +40,9 @@ class MatchingPipeline:
         if len(scores) == 0:
             return scores
 
-        minimum = scores.min()
-        maximum = scores.max()
-
-        if maximum == minimum:
-
-            return np.ones_like(scores)
-
-        return (
-            (scores - minimum)
-            / (maximum - minimum)
-        )
+        # Use sigmoid to map cross-encoder logits to 0-1 independently,
+        # preventing extreme 0% or 100% scores in small batches.
+        return 1 / (1 + np.exp(-scores))
 
 
     # =================================================
