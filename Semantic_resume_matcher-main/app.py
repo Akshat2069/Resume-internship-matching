@@ -445,8 +445,9 @@ def extract_jd_with_fallback(jd_text: str):
             or "servererror" in error_text
             or "timeout" in error_text
             or "deadline_exceeded" in error_text
+            or "gemini_api_key is not configured" in error_text
             or type(error).__name__.lower()
-            in ("clienterror", "apierror", "servererror", "timeouterror")
+            in ("clienterror", "apierror", "servererror", "timeouterror", "valueerror")
         )
 
         if not gemini_error:
