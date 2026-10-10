@@ -1,0 +1,16 @@
+[theme]
+base="dark"
+primaryColor="#8B5CF6"
+backgroundColor="#0F172A"
+secondaryBackgroundColor="#1E293B"
+textColor="#F8FAFC"
+
+[server]
+# Suppress noisy watcher errors from torchvision/transformers
+fileWatcherType = "none"
+
+[browser]
+gatherUsageStats = false
+
+[logger]
+level = "error"

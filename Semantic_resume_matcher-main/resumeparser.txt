@@ -1,0 +1,1380 @@
+import base64
+import os
+import re
+import tempfile
+
+import streamlit as st
+
+from src.parser import extract_text
+from src.jd_extractor import JDExtractor
+from src.resume_processor import ResumeProcessor
+from src.matching.pipeline import MatchingPipeline
+from evaluation.evaluate import evaluate
+
+
+# ============================================================
+# PAGE CONFIG
+# ============================================================
+
+st.set_page_config(
+    page_title="Resume ↔ JD Semantic Matcher",
+    page_icon="🎯",
+    layout="wide"
+)
+
+
+# ============================================================
+# LOCAL JD FALLBACK
+# ============================================================
+
+def local_jd_extraction(jd_text: str) -> dict:
+    """
+    Lightweight local fallback used only when Gemini extraction
+    fails because of quota/service availability.
+
+    The normal Gemini JDExtractor remains the first choice.
+    """
+
+    text = jd_text.strip()
+    lower_text = text.lower()
+
+    # --------------------------------------------------------
+    # EXPERIENCE
+    # --------------------------------------------------------
+
+    min_years_experience = None
+
+    range_matches = re.findall(
+        r"(\d+(?:\.\d+)?)\s*(?:-|to)\s*(\d+(?:\.\d+)?)"
+        r"\s*(?:\+?\s*)?years?\s+(?:of\s+)?(?:relevant\s+|professional\s+|"
+        r"work\s+|software\s+)?experience",
+        lower_text
+    )
+
+    if range_matches:
+
+        values = []
+
+        for minimum, maximum in range_matches:
+
+            try:
+                values.append(float(minimum))
+            except ValueError:
+                pass
+
+        if values:
+            min_years_experience = min(values)
+
+    if min_years_experience is None:
+
+        experience_matches = re.findall(
+            r"(?:minimum|at least)\s+(\d+(?:\.\d+)?)"
+            r"\s*\+?\s*years?",
+            lower_text
+        )
+
+        if experience_matches:
+
+            try:
+                min_years_experience = float(
+                    experience_matches[0]
+                )
+            except ValueError:
+                pass
+
+    if min_years_experience is None:
+
+        experience_matches = re.findall(
+            r"(\d+(?:\.\d+)?)\s*\+?\s*years?\s+"
+            r"(?:of\s+)?(?:relevant\s+|professional\s+|work\s+|software\s+)"
+            r"experience",
+            lower_text
+        )
+
+        if experience_matches:
+
+            try:
+                min_years_experience = float(
+                    experience_matches[0]
+                )
+            except ValueError:
+                pass
+
+    # --------------------------------------------------------
+    # SKILLS
+    # --------------------------------------------------------
+
+    known_skills = [
+        "python",
+        "java",
+        "c++",
+        "c",
+        "javascript",
+        "typescript",
+        "react",
+        "node.js",
+        "nodejs",
+        "express",
+        "sql",
+        "mysql",
+        "postgresql",
+        "mongodb",
+        "html",
+        "css",
+        "tailwind",
+        "git",
+        "github",
+        "linux",
+        "unix",
+        "docker",
+        "kubernetes",
+        "aws",
+        "azure",
+        "gcp",
+        "cloud",
+        "machine learning",
+        "deep learning",
+        "artificial intelligence",
+        "tensorflow",
+        "pytorch",
+        "scikit-learn",
+        "pandas",
+        "numpy",
+        "data structures",
+        "algorithms",
+        "data structures and algorithms",
+        "operating systems",
+        "computer networks",
+        "networking",
+        "distributed systems",
+        "system design",
+        "rest api",
+        "rest apis",
+        "fastapi",
+        "flask",
+        "spring boot",
+        "kafka",
+        "websocket",
+        "socket.io",
+        "webrtc",
+        "faiss",
+        "sentence transformers",
+        "nlp",
+        "natural language processing",
+        "statistics",
+        "probability",
+        "figma",
+        "ui/ux",
+        "ui design",
+        "ux design",
+    ]
+
+    required_skills = []
+
+    for skill in known_skills:
+
+        if skill.lower() in lower_text:
+
+            if skill not in required_skills:
+                required_skills.append(skill)
+
+    # --------------------------------------------------------
+    # EDUCATION
+    # --------------------------------------------------------
+
+    education_requirement = None
+
+    education_patterns = [
+        r"b\.?\s*tech",
+        r"b\.?\s*e\.?",
+        r"bachelor(?:'s)?\s+degree",
+        r"master(?:'s)?\s+degree",
+        r"m\.?\s*tech",
+        r"m\.?\s*e\.?",
+        r"computer science",
+        r"engineering degree",
+    ]
+
+    education_matches = []
+
+    for pattern in education_patterns:
+
+        if re.search(pattern, lower_text):
+
+            education_matches.append(pattern)
+
+    if education_matches:
+
+        education_requirement = (
+            "Degree/Education requirement specified in JD"
+        )
+
+    # --------------------------------------------------------
+    # CERTIFICATIONS
+    # --------------------------------------------------------
+
+    certifications_required = []
+
+    certification_keywords = [
+        "aws certified",
+        "azure certification",
+        "google cloud certification",
+        "certified kubernetes",
+        "professional certification",
+        "certification required",
+    ]
+
+    for certification in certification_keywords:
+
+        if certification in lower_text:
+
+            certifications_required.append(
+                certification
+            )
+
+    # --------------------------------------------------------
+    # LOCATION
+    # --------------------------------------------------------
+
+    location_policy = "Not Specified"
+
+    location_keywords = [
+        "remote",
+        "hybrid",
+        "work from home",
+        "onsite",
+        "on-site",
+        "in office",
+        "office based",
+    ]
+
+    for keyword in location_keywords:
+
+        if keyword in lower_text:
+
+            location_policy = keyword.title()
+
+            break
+
+    # --------------------------------------------------------
+    # SENIORITY
+    # --------------------------------------------------------
+
+    seniority_level = None
+
+    if "intern" in lower_text:
+
+        seniority_level = "Intern"
+
+    elif "entry level" in lower_text:
+
+        seniority_level = "Entry Level"
+
+    elif "junior" in lower_text:
+
+        seniority_level = "Junior"
+
+    elif "senior" in lower_text:
+
+        seniority_level = "Senior"
+
+    elif "lead" in lower_text:
+
+        seniority_level = "Lead"
+
+    # --------------------------------------------------------
+    # REQUIREMENTS
+    # --------------------------------------------------------
+
+    requirements = []
+
+    requirement_lines = []
+
+    for line in text.splitlines():
+
+        cleaned = line.strip()
+
+        if not cleaned:
+            continue
+
+        cleaned_lower = cleaned.lower()
+
+        if (
+            cleaned.startswith("-")
+            or cleaned.startswith("•")
+            or cleaned.startswith("*")
+            or "required skills" in cleaned_lower
+            or "requirements" in cleaned_lower
+            or "qualifications" in cleaned_lower
+        ):
+
+            cleaned = re.sub(
+                r"^[\-\•\*]\s*",
+                "",
+                cleaned
+            ).strip()
+
+            if (
+                len(cleaned) >= 10
+                and len(cleaned) <= 300
+            ):
+
+                requirement_lines.append(
+                    cleaned
+                )
+
+    # Remove section headings accidentally captured
+
+    section_words = [
+        "requirements",
+        "required skills",
+        "qualifications",
+        "responsibilities",
+        "job description",
+        "about the role",
+        "about us",
+        "preferred skills",
+    ]
+
+    for line in requirement_lines:
+
+        if line.lower() in section_words:
+            continue
+
+        if line not in requirements:
+
+            requirements.append(line)
+
+    # If bullet extraction produced nothing, create
+    # requirement entries from detected skills.
+
+    if not requirements:
+
+        for skill in required_skills:
+
+            requirements.append(
+                f"Experience with {skill}"
+            )
+
+    # Limit requirement count to avoid noisy fallback data.
+
+    requirements = requirements[:30]
+
+    # --------------------------------------------------------
+    # FINAL STRUCTURED OBJECT
+    # --------------------------------------------------------
+
+    return {
+        "job_id": "local_fallback_job",
+        "raw_text": text,
+
+        "required_skills": required_skills,
+
+        "preferred_skills": [],
+
+        "min_years_experience": (
+            min_years_experience
+        ),
+
+        "education_requirement": (
+            education_requirement
+        ),
+
+        "certifications_required": (
+            certifications_required
+        ),
+
+        "seniority_level": (
+            seniority_level
+        ),
+
+        "location_policy": (
+            location_policy
+        ),
+
+        "requirements": requirements,
+    }
+
+
+def extract_jd_with_fallback(jd_text: str):
+    """
+    First try the existing Gemini-based JDExtractor.
+
+    If Gemini is unavailable or quota is exhausted,
+    use the local fallback.
+    """
+
+    try:
+
+        jd_extractor = JDExtractor()
+
+        jd_data = jd_extractor.extract(
+            jd_text
+        )
+
+        return jd_data, False
+
+    except Exception as error:
+
+        error_text = str(error).lower()
+
+        gemini_error = (
+            "429" in error_text
+            or "503" in error_text
+            or "resource_exhausted" in error_text
+            or "unavailable" in error_text
+            or "quota" in error_text
+            or "servererror" in error_text
+            or "clienterror" in error_text
+        )
+
+        if not gemini_error:
+            raise
+
+        jd_data = local_jd_extraction(
+            jd_text
+        )
+
+        return jd_data, True
+
+
+# ============================================================
+# HEADER
+# ============================================================
+
+st.title(
+    "🎯 Resume ↔ Job Description Semantic Matcher"
+)
+
+st.write(
+    "Retrieve, rerank, filter, and explain candidate matches "
+    "against multiple Job Descriptions."
+)
+
+
+# ============================================================
+# UPLOAD SECTION
+# ============================================================
+
+st.header("Upload Documents")
+
+col1, col2 = st.columns(2)
+
+
+with col1:
+
+    st.subheader(
+        "Job Descriptions"
+    )
+
+    jd_files = st.file_uploader(
+        "Upload 1–3 Job Descriptions",
+        type=["pdf", "docx", "txt"],
+        accept_multiple_files=True,
+        key="jd_upload"
+    )
+
+
+with col2:
+
+    st.subheader(
+        "Candidate Resumes"
+    )
+
+    resume_files = st.file_uploader(
+        "Upload candidate resumes",
+        type=["pdf", "docx", "txt"],
+        accept_multiple_files=True,
+        key="resume_upload"
+    )
+
+
+# ============================================================
+# UPLOAD STATUS
+# ============================================================
+
+if jd_files:
+
+    if len(jd_files) > 3:
+
+        st.error(
+            "Please upload a maximum of 3 Job Descriptions."
+        )
+
+        st.stop()
+
+    st.success(
+        f"{len(jd_files)} Job Description(s) uploaded."
+    )
+
+
+if resume_files:
+
+    st.success(
+        f"{len(resume_files)} candidate resume(s) uploaded."
+    )
+
+
+# ============================================================
+# START MATCHING
+# ============================================================
+
+if jd_files and resume_files:
+
+    st.divider()
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+
+        st.metric(
+            "Job Descriptions",
+            len(jd_files)
+        )
+
+    with col2:
+
+        st.metric(
+            "Candidates",
+            len(resume_files)
+        )
+
+    with col3:
+
+        st.metric(
+            "Pipeline",
+            "Retrieve → Rerank → Filter"
+        )
+
+    start_matching = st.button(
+        "🚀 Start Matching",
+        type="primary",
+        use_container_width=True
+    )
+
+    if start_matching:
+
+        # ====================================================
+        # SAVE AND PROCESS RESUMES
+        # ====================================================
+
+        resume_paths = []
+
+        original_filenames = []
+
+        original_file_bytes = {}
+
+        for resume_file in resume_files:
+
+            suffix = os.path.splitext(
+                resume_file.name
+            )[1]
+
+            file_bytes = (
+                resume_file.getvalue()
+            )
+
+            temp_resume = (
+                tempfile.NamedTemporaryFile(
+                    delete=False,
+                    suffix=suffix
+                )
+            )
+
+            temp_resume.write(
+                file_bytes
+            )
+
+            temp_resume.close()
+
+            resume_paths.append(
+                temp_resume.name
+            )
+
+            original_filenames.append(
+                resume_file.name
+            )
+
+            original_file_bytes[
+                resume_file.name
+            ] = file_bytes
+
+        # ====================================================
+        # PROCESS RESUMES
+        # ====================================================
+
+        with st.spinner(
+            f"Processing {len(resume_paths)} resumes..."
+        ):
+
+            processor = ResumeProcessor()
+
+            resumes = processor.process_files(
+                resume_paths
+            )
+
+        # Restore original filenames
+
+        for resume, original_filename in zip(
+            resumes,
+            original_filenames
+        ):
+
+            resume["filename"] = (
+                original_filename
+            )
+
+        successful_resumes = [
+            resume
+            for resume in resumes
+            if "error" not in resume
+        ]
+
+        failed_resumes = [
+            resume
+            for resume in resumes
+            if "error" in resume
+        ]
+
+        if not successful_resumes:
+
+            st.error(
+                "No resumes could be processed."
+            )
+
+            st.stop()
+
+        # ====================================================
+        # MATCH EACH JD
+        # ====================================================
+
+        all_jd_results = []
+
+        pipeline = MatchingPipeline()
+
+        for jd_number, jd_file in enumerate(
+            jd_files,
+            start=1
+        ):
+
+            st.write(
+                f"### Processing JD {jd_number}: "
+                f"{jd_file.name}"
+            )
+
+            # ------------------------------------------------
+            # SAVE JD TEMPORARILY
+            # ------------------------------------------------
+
+            with tempfile.NamedTemporaryFile(
+                delete=False,
+                suffix=os.path.splitext(
+                    jd_file.name
+                )[1]
+            ) as temp_jd:
+
+                temp_jd.write(
+                    jd_file.getbuffer()
+                )
+
+                jd_path = temp_jd.name
+
+            # ------------------------------------------------
+            # EXTRACT JD TEXT
+            # ------------------------------------------------
+
+            with st.spinner(
+                f"Reading Job Description {jd_number}..."
+            ):
+
+                jd_text = extract_text(
+                    jd_path
+                )
+
+            # ------------------------------------------------
+            # GEMINI + FALLBACK EXTRACTION
+            # ------------------------------------------------
+
+            with st.spinner(
+                f"Extracting requirements from JD {jd_number}..."
+            ):
+
+                jd_data, used_fallback = (
+                    extract_jd_with_fallback(
+                        jd_text
+                    )
+                )
+
+            if used_fallback:
+
+                st.warning(
+                    f"Gemini quota/service was unavailable for "
+                    f"JD {jd_number}. "
+                    f"Using local JD extraction so matching can continue."
+                )
+
+            # ------------------------------------------------
+            # EXISTING MATCHING PIPELINE
+            # ------------------------------------------------
+
+            with st.spinner(
+                f"Matching JD {jd_number} against "
+                f"{len(successful_resumes)} resumes..."
+            ):
+
+                results = pipeline.match(
+                    jd_text=jd_text,
+                    jd_data=jd_data,
+                    resumes=successful_resumes,
+                    retrieval_top_k=len(
+                        successful_resumes
+                    )
+                )
+
+            # ------------------------------------------------
+            # STORE RESULTS
+            # ------------------------------------------------
+
+            all_jd_results.append(
+                {
+                    "jd_number": jd_number,
+                    "filename": jd_file.name,
+                    "jd_text": jd_text,
+                    "jd_data": jd_data,
+                    "results": results
+                }
+            )
+
+        # ====================================================
+        # STORE RESULTS
+        # ====================================================
+
+        st.session_state[
+            "all_jd_results"
+        ] = all_jd_results
+
+        st.session_state[
+            "original_file_bytes"
+        ] = original_file_bytes
+
+        st.session_state[
+            "failed_resumes"
+        ] = failed_resumes
+
+        st.success(
+            f"Matching completed for "
+            f"{len(jd_files)} Job Description(s) "
+            f"and {len(successful_resumes)} candidate(s)."
+        )
+
+
+# ============================================================
+# RESULTS
+# ============================================================
+
+if "all_jd_results" in st.session_state:
+
+    all_jd_results = st.session_state[
+        "all_jd_results"
+    ]
+
+    original_file_bytes = (
+        st.session_state.get(
+            "original_file_bytes",
+            {}
+        )
+    )
+
+    failed_resumes = (
+        st.session_state.get(
+            "failed_resumes",
+            []
+        )
+    )
+
+    st.divider()
+
+    st.header(
+        "📊 Ranked Candidate Shortlists"
+    )
+
+    if failed_resumes:
+
+        st.warning(
+            f"{len(failed_resumes)} resume(s) "
+            "could not be processed."
+        )
+
+    # ========================================================
+    # ONE SECTION PER JD
+    # ========================================================
+
+    for jd_result in all_jd_results:
+
+        jd_number = jd_result[
+            "jd_number"
+        ]
+
+        jd_filename = jd_result[
+            "filename"
+        ]
+
+        results = jd_result[
+            "results"
+        ]
+
+        st.divider()
+
+        st.header(
+            f"📌 JD {jd_number}: {jd_filename}"
+        )
+
+        st.caption(
+            f"{len(results)} candidate(s) ranked for this Job Description."
+        )
+
+        # ====================================================
+        # TOP-N DISPLAY
+        # ====================================================
+
+        top_n = st.selectbox(
+            "Number of top candidates to show",
+            options=[5, 6, 10, 15, 20],
+            index=0,
+            key=f"top_n_{jd_number}"
+        )
+
+        displayed_results = results[:top_n]
+
+        st.caption(
+            f"Showing top {min(top_n, len(results))} candidate(s) based on final score."
+        )
+
+        # ====================================================
+        # EVALUATION LABELS
+        # ====================================================
+        # Relevance labels are supplied by the evaluator for
+        # the actual uploaded resumes. No resume IDs are hardcoded.
+
+        st.subheader("📝 Evaluation Labels")
+
+        st.caption(
+            "Assign a relevance label to each candidate: "
+            "3 = Highly Relevant, 2 = Relevant, "
+            "1 = Partially Relevant, 0 = Not Relevant."
+        )
+
+        relevance_map = {}
+
+        for result in results:
+
+            resume_id = result["resume_id"]
+            filename = result["filename"]
+
+            label_key = (
+                f"relevance_{jd_number}_{resume_id}"
+            )
+
+            relevance_map[resume_id] = st.selectbox(
+                f"{filename}",
+                options=[3, 2, 1, 0],
+                index=0,
+                key=label_key,
+                format_func=lambda value: {
+                    3: "3 — Highly Relevant",
+                    2: "2 — Relevant",
+                    1: "1 — Partially Relevant",
+                    0: "0 — Not Relevant"
+                }[value]
+            )
+
+        # ====================================================
+        # EVALUATION METRICS
+        # ====================================================
+        # K comes directly from the user's Streamlit selection.
+        # The evaluation module does not decide K itself.
+
+        ranked_resume_ids = [
+            result["resume_id"]
+            for result in results
+        ]
+
+        try:
+
+            evaluation_results = evaluate(
+                ranked_ids=ranked_resume_ids,
+                relevance_map=relevance_map,
+                k=top_n
+            )
+
+            st.subheader(
+                f"📈 Evaluation Metrics @ {top_n}"
+            )
+
+            metric_col1, metric_col2, metric_col3 = (
+                st.columns(3)
+            )
+
+            with metric_col1:
+
+                st.metric(
+                    f"Precision@{top_n}",
+                    f"{evaluation_results[f'Precision@{top_n}'] * 100:.1f}%"
+                )
+
+            with metric_col2:
+
+                st.metric(
+                    f"Recall@{top_n}",
+                    f"{evaluation_results[f'Recall@{top_n}'] * 100:.1f}%"
+                )
+
+            with metric_col3:
+
+                st.metric(
+                    f"NDCG@{top_n}",
+                    f"{evaluation_results[f'NDCG@{top_n}'] * 100:.1f}%"
+                )
+
+            st.caption(
+                f"Metrics calculated using the same K={top_n} selected above "
+                "and the relevance labels provided for the uploaded candidates."
+            )
+
+        except Exception as evaluation_error:
+
+            st.warning(
+                f"Evaluation metrics could not be calculated: "
+                f"{evaluation_error}"
+            )
+
+        # ====================================================
+        # RANKING TABLE
+        # ====================================================
+
+        st.subheader(
+            "Candidate Ranking"
+        )
+
+        header = st.columns(
+            [0.5, 2.2, 1.3, 1.5, 1.2, 1.3]
+        )
+
+        with header[0]:
+
+            st.write("**Rank**")
+
+        with header[1]:
+
+            st.write("**Candidate**")
+
+        with header[2]:
+
+            st.write("**Retrieval Score**")
+
+        with header[3]:
+
+            st.write("**Re-ranking Score**")
+
+        with header[4]:
+
+            st.write("**Filter Score**")
+
+        with header[5]:
+
+            st.write("**Final Score**")
+
+        for result in displayed_results:
+
+            row = st.columns(
+                [0.5, 2.2, 1.3, 1.5, 1.2, 1.3]
+            )
+
+            with row[0]:
+
+                st.write(
+                    f"**{result['rank']}**"
+                )
+
+            with row[1]:
+
+                st.write(
+                    f"**{result['filename']}**"
+                )
+
+            with row[2]:
+
+                st.write(
+                    f"{result['retrieval_score']:.3f}"
+                )
+
+            with row[3]:
+
+                st.write(
+                    f"{result['cross_encoder_score'] * 100:.1f}%"
+                )
+
+            with row[4]:
+
+                st.write(
+                    f"{result['filter_score'] * 100:.1f}%"
+                )
+
+            with row[5]:
+
+                st.write(
+                    f"**{result['final_score']:.1f}%**"
+                )
+
+        # ====================================================
+        # CANDIDATE ANALYSIS
+        # ====================================================
+
+        st.subheader(
+            "👤 Candidate Analysis"
+        )
+
+        for result in displayed_results:
+
+            candidate_title = (
+                f"#{result['rank']}  |  "
+                f"{result['filename']}  |  "
+                f"{result['final_score']:.1f}%"
+            )
+
+            with st.expander(
+                candidate_title
+            ):
+
+                st.subheader(
+                    "Match Signals"
+                )
+
+                c1, c2, c3, c4 = st.columns(4)
+
+                with c1:
+
+                    st.metric(
+                        "Final Score",
+                        f"{result['final_score']:.1f}%"
+                    )
+
+                with c2:
+
+                    st.metric(
+                        "Retrieval Score",
+                        f"{result['retrieval_score']:.3f}"
+                    )
+
+                with c3:
+
+                    st.metric(
+                        "Re-ranking Score",
+                        f"{result['cross_encoder_score'] * 100:.1f}%"
+                    )
+
+                with c4:
+
+                    st.metric(
+                        "Filter Score",
+                        f"{result['filter_score'] * 100:.1f}%"
+                    )
+
+                # ============================================
+                # SKILL / EXPERIENCE
+                # ============================================
+
+                st.subheader(
+                    "Candidate Fit"
+                )
+
+                c1, c2 = st.columns(2)
+
+                with c1:
+
+                    st.metric(
+                        "Skill Coverage",
+                        f"{result['skill_coverage']:.1f}%"
+                    )
+
+                with c2:
+
+                    experience = result[
+                        "experience_match"
+                    ]
+
+                    st.metric(
+                        "Experience",
+                        experience["status"]
+                    )
+
+                # ============================================
+                # STRUCTURED FILTERS
+                # ============================================
+
+                filter_details = result[
+                    "filter_details"
+                ]
+
+                experience_filter = (
+                    filter_details.get(
+                        "experience",
+                        {}
+                    )
+                )
+
+                certification_filter = (
+                    filter_details.get(
+                        "certifications",
+                        {}
+                    )
+                )
+
+                required_years = (
+                    experience_filter.get(
+                        "required_years"
+                    )
+                )
+
+                candidate_years = (
+                    experience_filter.get(
+                        "candidate_years"
+                    )
+                )
+
+                if required_years is not None:
+
+                    st.subheader(
+                        "Experience"
+                    )
+
+                    st.write(
+                        f"Required: {required_years} years"
+                    )
+
+                    if candidate_years is not None:
+
+                        st.write(
+                            f"Candidate: {candidate_years} years"
+                        )
+
+                    st.write(
+                        f"Status: "
+                        f"{experience_filter.get('status')}"
+                    )
+
+                required_certs = (
+                    certification_filter.get(
+                        "required"
+                    )
+                )
+
+                candidate_certs = (
+                    certification_filter.get(
+                        "candidate"
+                    )
+                )
+
+                if required_certs:
+
+                    st.subheader(
+                        "Certifications"
+                    )
+
+                    st.write(
+                        f"Required: {required_certs}"
+                    )
+
+                    if candidate_certs:
+
+                        st.write(
+                            f"Candidate: {candidate_certs}"
+                        )
+
+                # ============================================
+                # REQUIREMENT EVIDENCE
+                # ============================================
+
+                matched_requirements = (
+                    result[
+                        "matched_requirements"
+                    ]
+                )
+
+                unmatched_requirements = (
+                    result[
+                        "unmatched_requirements"
+                    ]
+                )
+
+                if matched_requirements:
+
+                    st.subheader(
+                        "✅ Requirement Evidence"
+                    )
+
+                    for item in matched_requirements:
+
+                        st.write(
+                            f"**{item['requirement']}**"
+                        )
+
+                        st.caption(
+                            f"Similarity: "
+                            f"{item['similarity']:.3f}"
+                        )
+
+                        st.info(
+                            f"Evidence: "
+                            f"{item['evidence']}"
+                        )
+
+                if unmatched_requirements:
+
+                    st.subheader(
+                        "❌ Missing Requirements"
+                    )
+
+                    for item in unmatched_requirements:
+
+                        st.write(
+                            f"✗ {item['requirement']}"
+                        )
+
+                # ============================================
+                # SKILLS
+                # ============================================
+
+                matched_skills = (
+                    result[
+                        "matched_skills"
+                    ]
+                )
+
+                unmatched_skills = (
+                    result[
+                        "unmatched_skills"
+                    ]
+                )
+
+                if matched_skills or unmatched_skills:
+
+                    st.subheader(
+                        "🛠 Skills"
+                    )
+
+                    skill_col1, skill_col2 = (
+                        st.columns(2)
+                    )
+
+                    with skill_col1:
+
+                        st.write(
+                            "**Matching Skills**"
+                        )
+
+                        if matched_skills:
+
+                            for skill in matched_skills:
+
+                                st.write(
+                                    f"✓ {skill['skill']}"
+                                )
+
+                        else:
+
+                            st.write(
+                                "None"
+                            )
+
+                    with skill_col2:
+
+                        st.write(
+                            "**Missing Skills**"
+                        )
+
+                        if unmatched_skills:
+
+                            for skill in unmatched_skills:
+
+                                st.write(
+                                    f"✗ {skill['skill']}"
+                                )
+
+                        else:
+
+                            st.write(
+                                "None"
+                            )
+
+                # ============================================
+                # EXPLANATION
+                # ============================================
+
+                explanation = result.get(
+                    "explanation"
+                )
+
+                if explanation:
+
+                    st.subheader(
+                        "🧠 Evidence-Based Explanation"
+                    )
+
+                    st.info(
+                        explanation
+                    )
+
+                # ============================================
+                # ORIGINAL RESUME
+                # ============================================
+
+                st.subheader(
+                    "📄 Original Resume"
+                )
+
+                filename = result[
+                    "filename"
+                ]
+
+                file_bytes = (
+                    original_file_bytes.get(
+                        filename
+                    )
+                )
+
+                if file_bytes:
+
+                    extension = (
+                        os.path.splitext(
+                            filename
+                        )[1].lower()
+                    )
+
+                    st.download_button(
+                        label="📥 Download Original Resume",
+                        data=file_bytes,
+                        file_name=filename,
+                        mime=(
+                            "application/pdf"
+                            if extension == ".pdf"
+                            else None
+                        ),
+                        key=(
+                            f"download_"
+                            f"{jd_number}_"
+                            f"{filename}"
+                        )
+                    )
+
+
+# ============================================================
+# EMPTY STATE
+# ============================================================
+
+else:
+
+    st.info(
+        "Upload 1–3 Job Descriptions and one or more "
+        "candidate resumes to begin."
+    )
