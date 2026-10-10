@@ -424,40 +424,13 @@ def extract_jd_with_fallback(jd_text: str):
         return jd_data, False
 
     except Exception as error:
-
-        error_text = str(error).lower()
-
-        # Fall back to local extraction for ANY Gemini API failure:
-        # quota (429), server error (500/503), model not found (404),
-        # or any other ClientError / APIError from google-genai.
-        gemini_error = (
-            "404" in error_text
-            or "429" in error_text
-            or "500" in error_text
-            or "503" in error_text
-            or "not_found" in error_text
-            or "resource_exhausted" in error_text
-            or "unavailable" in error_text
-            or "quota" in error_text
-            or "no longer available" in error_text
-            or "clienterror" in error_text
-            or "apierror" in error_text
-            or "servererror" in error_text
-            or "timeout" in error_text
-            or "deadline_exceeded" in error_text
-            or "gemini_api_key is not configured" in error_text
-            or type(error).__name__.lower()
-            in ("clienterror", "apierror", "servererror", "timeouterror", "valueerror")
-        )
-
-        if not gemini_error:
-            raise
-
+        print(f"Gemini extraction failed: {error}")
         jd_data = local_jd_extraction(
             jd_text
         )
-
         return jd_data, True
+
+
 
 
 # ============================================================
