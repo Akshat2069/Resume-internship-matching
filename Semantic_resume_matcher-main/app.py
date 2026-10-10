@@ -443,25 +443,25 @@ st.markdown("""
 
 html, body, [class*="css"] {
     font-family: 'Inter', sans-serif;
-    color: #F8FAFC;
+    color: #1A1A1A;
 }
 
-/* Beautiful Modern Dark Background */
+/* Beautiful Modern Light Background */
 .stApp {
-    background-color: #0F172A;
+    background-color: #FFFFFF;
     background-image: 
-        radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
-        radial-gradient(at 100% 0%, rgba(139, 92, 246, 0.15) 0px, transparent 50%),
-        radial-gradient(at 100% 100%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
-        radial-gradient(at 0% 100%, rgba(139, 92, 246, 0.15) 0px, transparent 50%),
-        radial-gradient(#334155 1px, transparent 1px);
+        radial-gradient(at 0% 0%, rgba(255, 152, 0, 0.1) 0px, transparent 50%),
+        radial-gradient(at 100% 0%, rgba(255, 122, 0, 0.1) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(255, 152, 0, 0.1) 0px, transparent 50%),
+        radial-gradient(at 0% 100%, rgba(255, 122, 0, 0.1) 0px, transparent 50%),
+        radial-gradient(#E2E8F0 1px, transparent 1px);
     background-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%, 24px 24px;
     background-attachment: fixed;
 }
 
 h1, h2, h3, h4, h5, h6, .st-emotion-cache-10trblm {
     font-family: 'Outfit', sans-serif !important;
-    color: #FFFFFF !important;
+    color: #111827 !important;
     font-weight: 700 !important;
 }
 
@@ -470,54 +470,54 @@ header {visibility: hidden;}
 #MainMenu {visibility: hidden;}
 footer {visibility: hidden;}
 
-/* Modern Beautiful Dark Button Styling */
+/* Modern Beautiful Light Button Styling */
 .stButton > button {
     border-radius: 999px !important;
-    background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%) !important;
-    color: #F8FAFC !important;
-    border: 1px solid #334155 !important;
+    background: linear-gradient(135deg, #F1F5F9 0%, #FFFFFF 100%) !important;
+    color: #1A1A1A !important;
+    border: 1px solid #CBD5E1 !important;
     padding: 0.6rem 2rem !important;
     font-weight: 600 !important;
     font-family: 'Outfit', sans-serif !important;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05) !important;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 .stButton > button:hover {
-    background: #1E293B !important;
-    color: #A78BFA !important;
-    border: 1px solid #6366F1 !important;
-    box-shadow: 0 10px 15px -3px rgba(99, 102, 241, 0.15), 0 4px 6px -2px rgba(99, 102, 241, 0.1) !important;
+    background: #F8FAFC !important;
+    color: #FF7A00 !important;
+    border: 1px solid #FF9800 !important;
+    box-shadow: 0 10px 15px -3px rgba(255, 152, 0, 0.15), 0 4px 6px -2px rgba(255, 152, 0, 0.1) !important;
     transform: translateY(-2px) !important;
 }
 
 /* Primary Button Override */
 .stButton > button[kind="primary"] {
-    background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%) !important;
+    background: linear-gradient(135deg, #FF9800 0%, #FF7A00 100%) !important;
     color: #FFFFFF !important;
     border: none !important;
-    box-shadow: 0 4px 14px 0 rgba(99, 102, 241, 0.39) !important;
+    box-shadow: 0 4px 14px 0 rgba(255, 122, 0, 0.39) !important;
 }
 .stButton > button[kind="primary"]:hover {
-    background: linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%) !important;
-    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5) !important;
+    background: linear-gradient(135deg, #F57C00 0%, #E65100 100%) !important;
+    box-shadow: 0 6px 20px rgba(255, 122, 0, 0.5) !important;
     transform: translateY(-3px) !important;
 }
 
-/* Dark Glassmorphism Cards */
+/* Light Glassmorphism Cards */
 div[data-testid="stMetric"], .stExpander, div[data-testid="stFileUploader"] > div {
-    background: rgba(30, 41, 59, 0.7);
+    background: rgba(255, 255, 255, 0.8);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(0, 0, 0, 0.05);
     border-radius: 24px;
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.05);
     padding: 1.5rem;
     transition: all 0.3s ease;
 }
 div[data-testid="stMetric"]:hover, .stExpander:hover, div[data-testid="stFileUploader"] > div:hover {
     transform: translateY(-2px);
-    box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.4);
-    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.1);
+    border: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 /* Upload zone override */
@@ -525,12 +525,12 @@ div[data-testid="stFileUploader"] > div > section {
     background-color: transparent !important;
 }
 div[data-testid="stFileUploader"] > div {
-    border: 2px dashed #475569 !important;
-    background: rgba(30, 41, 59, 0.4) !important;
+    border: 2px dashed #CBD5E1 !important;
+    background: rgba(255, 255, 255, 0.4) !important;
 }
 div[data-testid="stFileUploader"] > div:hover {
-    border: 2px dashed #8B5CF6 !important;
-    background: rgba(139, 92, 246, 0.1) !important;
+    border: 2px dashed #FF9800 !important;
+    background: rgba(255, 152, 0, 0.05) !important;
 }
 
 /* Section Headers & Badges */
@@ -541,29 +541,29 @@ div[data-testid="stFileUploader"] > div:hover {
     margin-bottom: 1.5rem;
 }
 .positivus-badge {
-    background: linear-gradient(135deg, #1E1B4B 0%, #2E1065 100%);
-    color: #A78BFA;
+    background: linear-gradient(135deg, #FFF3E0 0%, #FFE0B2 100%);
+    color: #E65100;
     padding: 8px 20px;
     border-radius: 999px;
-    border: 1px solid #4C1D95;
+    border: 1px solid #FFCC80;
     font-family: 'Outfit', sans-serif;
     font-size: 28px;
     font-weight: 700;
     display: inline-block;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
 }
 
 /* Input Fields */
 .stTextInput > div > div > input, .stSelectbox > div > div {
     border-radius: 12px !important;
-    border: 1px solid #334155 !important;
-    background-color: #1E293B !important;
-    color: #F8FAFC !important;
+    border: 1px solid #E2E8F0 !important;
+    background-color: #FFFFFF !important;
+    color: #1A1A1A !important;
     transition: all 0.2s ease !important;
 }
 .stTextInput > div > div > input:focus, .stSelectbox > div > div:focus {
-    border-color: #8B5CF6 !important;
-    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.3) !important;
+    border-color: #FF9800 !important;
+    box-shadow: 0 0 0 3px rgba(255, 152, 0, 0.2) !important;
 }
 </style>
 """, unsafe_allow_html=True)

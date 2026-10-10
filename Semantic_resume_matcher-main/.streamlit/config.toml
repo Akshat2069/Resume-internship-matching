@@ -1,9 +1,9 @@
 [theme]
-base="dark"
-primaryColor="#8B5CF6"
-backgroundColor="#0F172A"
-secondaryBackgroundColor="#1E293B"
-textColor="#F8FAFC"
+base="light"
+primaryColor="#FF7A00"
+backgroundColor="#FFFFFF"
+secondaryBackgroundColor="#FFF0E0"
+textColor="#1A1A1A"
 
 [server]
 # Suppress noisy watcher errors from torchvision/transformers
