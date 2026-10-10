@@ -40,9 +40,11 @@ class MatchingPipeline:
         if len(scores) == 0:
             return scores
 
-        # Use sigmoid to map cross-encoder logits to 0-1 independently,
-        # preventing extreme 0% or 100% scores in small batches.
-        return 1 / (1 + np.exp(-scores))
+        # Use softened sigmoid (temperature = 3.0) to map cross-encoder 
+        # logits to 0-1 independently, preventing the extremely harsh AI 
+        # from completely crushing scores to 0.0% or 100.0%.
+        temperature = 3.0
+        return 1 / (1 + np.exp(-scores / temperature))
 
 
     # =================================================
